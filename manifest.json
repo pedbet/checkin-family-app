@@ -1,0 +1,9 @@
+{
+  "name": "Recurring Check-ins",
+  "short_name": "Check-ins",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f4f6fb",
+  "theme_color": "#3854ff",
+  "description": "Track recurring check-ins with custom thresholds."
+}
