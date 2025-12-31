@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Check-in Planner</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Recurring Check-ins</h1>
+        <p>
+          Track recurring check-ins with custom thresholds. Mark items done
+          anytime to reset the next due date.
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>Add a check-in</h2>
+        <form id="checkin-form">
+          <label>
+            Check-in name
+            <input type="text" id="title" name="title" placeholder="Call Grandma" required />
+          </label>
+
+          <div class="row">
+            <label>
+              Frequency
+              <div class="row inline">
+                <input
+                  type="number"
+                  id="frequency-value"
+                  name="frequency-value"
+                  min="1"
+                  value="1"
+                  required
+                />
+                <select id="frequency-unit" name="frequency-unit">
+                  <option value="days">Days</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months" selected>Months</option>
+                </select>
+              </div>
+            </label>
+
+            <label>
+              First due date
+              <input type="date" id="first-due-date" name="first-due-date" required />
+            </label>
+          </div>
+
+          <div class="row">
+            <label>
+              Yellow threshold (days overdue)
+              <input
+                type="number"
+                id="yellow-threshold"
+                name="yellow-threshold"
+                min="0"
+                value="14"
+                required
+              />
+            </label>
+            <label>
+              Red threshold (days overdue)
+              <input
+                type="number"
+                id="red-threshold"
+                name="red-threshold"
+                min="1"
+                value="14"
+                required
+              />
+            </label>
+          </div>
+          <label>
+            Labels (comma-separated)
+            <input
+              type="text"
+              id="labels"
+              name="labels"
+              placeholder="family, housework"
+            />
+          </label>
+          <p class="helper">
+            Example: set yellow to 14 days and red to 14 days to show yellow
+            until 2 weeks overdue, then red afterward.
+          </p>
+
+          <button type="submit">Add check-in</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-header">
+          <h2>Your check-ins</h2>
+          <div class="legend">
+            <span class="legend-item ontime">On time</span>
+            <span class="legend-item yellow">Yellow</span>
+            <span class="legend-item red">Red</span>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="filter-group">
+            <h3>Status</h3>
+            <button class="filter-button active" data-status="all">All</button>
+            <button class="filter-button" data-status="red">Red</button>
+            <button class="filter-button" data-status="yellow">Yellow</button>
+            <button class="filter-button" data-status="ontime">On time</button>
+          </div>
+          <div class="filter-group">
+            <h3>Upcoming</h3>
+            <button class="filter-button active" data-upcoming="all">All</button>
+            <button class="filter-button" data-upcoming="day">Next day</button>
+            <button class="filter-button" data-upcoming="week">Next week</button>
+            <button class="filter-button" data-upcoming="month">Next month</button>
+          </div>
+          <label class="filter-group">
+            <h3>Labels</h3>
+            <select id="label-filter">
+              <option value="all">All labels</option>
+            </select>
+          </label>
+        </div>
+        <div id="checkins" class="checkins"></div>
+      </section>
+    </main>
+
+    <template id="checkin-template">
+      <article class="checkin-card">
+        <div class="card-header">
+          <div>
+            <h3 class="checkin-title"></h3>
+            <p class="checkin-frequency"></p>
+          </div>
+          <span class="status-pill"></span>
+        </div>
+        <div class="card-body">
+          <p class="checkin-due"></p>
+          <p class="checkin-last"></p>
+          <p class="checkin-overdue"></p>
+          <div class="checkin-labels"></div>
+        </div>
+        <div class="card-actions">
+          <button class="checkin-now">Check-in today</button>
+          <button class="delete">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js");
+        });
+      }
+    </script>
+  </body>
+</html>
