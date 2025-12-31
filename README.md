@@ -21,3 +21,4 @@ the app from Safari:
 
 This uses your hosted URL so the app installs like a PWA and can be opened
 offline (after the first load).
+

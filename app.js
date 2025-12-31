@@ -3,15 +3,6 @@ const STORAGE_KEY = "checkin-items";
 const form = document.querySelector("#checkin-form");
 const checkinsContainer = document.querySelector("#checkins");
 const template = document.querySelector("#checkin-template");
-const statusButtons = document.querySelectorAll("[data-status]");
-const upcomingButtons = document.querySelectorAll("[data-upcoming]");
-const labelFilter = document.querySelector("#label-filter");
-
-const activeFilters = {
-  status: "all",
-  upcoming: "all",
-  label: "all",
-};
 
 const formatDate = (date) =>
   new Intl.DateTimeFormat("en-US", {
@@ -47,25 +38,12 @@ const loadCheckins = () => {
     return [];
   }
   try {
-    return JSON.parse(stored).map((checkin) => ({
-      ...checkin,
-      labels: Array.isArray(checkin.labels) ? checkin.labels : [],
-    }));
+    return JSON.parse(stored);
   } catch (error) {
     console.error("Failed to parse stored check-ins", error);
     return [];
   }
 };
-
-const normalizeLabels = (rawLabels) =>
-  Array.from(
-    new Set(
-      rawLabels
-        .split(",")
-        .map((label) => label.trim())
-        .filter(Boolean),
-    ),
-  );
 
 const saveCheckins = (checkins) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
@@ -98,7 +76,6 @@ const buildCheckinCard = (checkin) => {
   const due = node.querySelector(".checkin-due");
   const last = node.querySelector(".checkin-last");
   const overdue = node.querySelector(".checkin-overdue");
-  const labelsContainer = node.querySelector(".checkin-labels");
   const checkinNow = node.querySelector(".checkin-now");
   const deleteButton = node.querySelector(".delete");
 
@@ -118,21 +95,6 @@ const buildCheckinCard = (checkin) => {
     overdueDays === 0
       ? "Not overdue"
       : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`;
-
-  labelsContainer.innerHTML = "";
-  if (checkin.labels.length > 0) {
-    checkin.labels.forEach((label) => {
-      const pill = document.createElement("span");
-      pill.classList.add("label-pill");
-      pill.textContent = label;
-      labelsContainer.appendChild(pill);
-    });
-  } else {
-    const empty = document.createElement("span");
-    empty.classList.add("helper");
-    empty.textContent = "No labels";
-    labelsContainer.appendChild(empty);
-  }
 
   checkinNow.addEventListener("click", () => {
     checkin.lastCheckInDate = new Date().toISOString();
@@ -155,49 +117,9 @@ const buildCheckinCard = (checkin) => {
 
 let checkins = loadCheckins();
 
-const updateLabelFilterOptions = () => {
-  const labels = Array.from(
-    new Set(checkins.flatMap((checkin) => checkin.labels)),
-  ).sort((a, b) => a.localeCompare(b));
-  labelFilter.innerHTML = '<option value="all">All labels</option>';
-  labels.forEach((label) => {
-    const option = document.createElement("option");
-    option.value = label;
-    option.textContent = label;
-    labelFilter.appendChild(option);
-  });
-};
-
 const saveAndRender = () => {
   saveCheckins(checkins);
-  updateLabelFilterOptions();
   renderCheckins();
-};
-
-const isWithinUpcomingRange = (checkin, upcomingRange) => {
-  if (upcomingRange === "all") {
-    return true;
-  }
-  const now = new Date();
-  const due = new Date(checkin.nextDueDate);
-  const dayMs = 1000 * 60 * 60 * 24;
-  const diffDays = Math.ceil((due - now) / dayMs);
-  if (diffDays < 0) {
-    return false;
-  }
-  if (upcomingRange === "day") {
-    return diffDays <= 1;
-  }
-  if (upcomingRange === "week") {
-    return diffDays <= 7;
-  }
-  return diffDays <= 30;
-};
-
-const statusPriority = {
-  red: 0,
-  yellow: 1,
-  ontime: 2,
 };
 
 const renderCheckins = () => {
@@ -212,32 +134,11 @@ const renderCheckins = () => {
   }
 
   checkins
-    .map((checkin) => ({
-      checkin,
-      status: computeStatus(checkin),
-    }))
-    .filter(({ checkin, status }) => {
-      if (activeFilters.status !== "all" && status.state !== activeFilters.status) {
-        return false;
-      }
-      if (
-        activeFilters.label !== "all" &&
-        !checkin.labels.includes(activeFilters.label)
-      ) {
-        return false;
-      }
-      return isWithinUpcomingRange(checkin, activeFilters.upcoming);
-    })
-    .sort((a, b) => {
-      const statusDiff =
-        statusPriority[a.status.state] - statusPriority[b.status.state];
-      if (statusDiff !== 0) {
-        return statusDiff;
-      }
-      return new Date(a.checkin.nextDueDate) - new Date(b.checkin.nextDueDate);
-    })
+    .sort(
+      (a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime(),
+    )
     .forEach((checkin) => {
-      checkinsContainer.appendChild(buildCheckinCard(checkin.checkin));
+      checkinsContainer.appendChild(buildCheckinCard(checkin));
     });
 };
 
@@ -250,7 +151,6 @@ form.addEventListener("submit", (event) => {
   const firstDueDate = parseDateInput(String(formData.get("first-due-date")));
   const yellowThresholdDays = Number(formData.get("yellow-threshold"));
   const redThresholdDays = Number(formData.get("red-threshold"));
-  const labels = normalizeLabels(String(formData.get("labels") || ""));
 
   if (!title) {
     return;
@@ -270,7 +170,6 @@ form.addEventListener("submit", (event) => {
     lastCheckInDate: null,
     yellowThresholdDays,
     redThresholdDays,
-    labels,
   };
 
   checkins.unshift(newCheckin);
@@ -280,31 +179,7 @@ form.addEventListener("submit", (event) => {
   document.querySelector("#yellow-threshold").value = 14;
   document.querySelector("#red-threshold").value = 14;
   document.querySelector("#first-due-date").valueAsDate = new Date();
-  document.querySelector("#labels").value = "";
   saveAndRender();
-});
-
-statusButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    statusButtons.forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    activeFilters.status = button.dataset.status;
-    renderCheckins();
-  });
-});
-
-upcomingButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    upcomingButtons.forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    activeFilters.upcoming = button.dataset.upcoming;
-    renderCheckins();
-  });
-});
-
-labelFilter.addEventListener("change", (event) => {
-  activeFilters.label = event.target.value;
-  renderCheckins();
 });
 
 const setDefaultDate = () => {
@@ -314,5 +189,4 @@ const setDefaultDate = () => {
 };
 
 setDefaultDate();
-updateLabelFilterOptions();
 renderCheckins();

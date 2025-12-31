@@ -4,7 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Check-in Planner</title>
-    <link rel="manifest" href="manifest.json" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -75,15 +74,6 @@
               />
             </label>
           </div>
-          <label>
-            Labels (comma-separated)
-            <input
-              type="text"
-              id="labels"
-              name="labels"
-              placeholder="family, housework"
-            />
-          </label>
           <p class="helper">
             Example: set yellow to 14 days and red to 14 days to show yellow
             until 2 weeks overdue, then red afterward.
@@ -102,28 +92,6 @@
             <span class="legend-item red">Red</span>
           </div>
         </div>
-        <div class="filters">
-          <div class="filter-group">
-            <h3>Status</h3>
-            <button class="filter-button active" data-status="all">All</button>
-            <button class="filter-button" data-status="red">Red</button>
-            <button class="filter-button" data-status="yellow">Yellow</button>
-            <button class="filter-button" data-status="ontime">On time</button>
-          </div>
-          <div class="filter-group">
-            <h3>Upcoming</h3>
-            <button class="filter-button active" data-upcoming="all">All</button>
-            <button class="filter-button" data-upcoming="day">Next day</button>
-            <button class="filter-button" data-upcoming="week">Next week</button>
-            <button class="filter-button" data-upcoming="month">Next month</button>
-          </div>
-          <label class="filter-group">
-            <h3>Labels</h3>
-            <select id="label-filter">
-              <option value="all">All labels</option>
-            </select>
-          </label>
-        </div>
         <div id="checkins" class="checkins"></div>
       </section>
     </main>
@@ -141,7 +109,6 @@
           <p class="checkin-due"></p>
           <p class="checkin-last"></p>
           <p class="checkin-overdue"></p>
-          <div class="checkin-labels"></div>
         </div>
         <div class="card-actions">
           <button class="checkin-now">Check-in today</button>
@@ -151,12 +118,5 @@
     </template>
 
     <script src="app.js"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("./sw.js");
-        });
-      }
-    </script>
   </body>
 </html>
