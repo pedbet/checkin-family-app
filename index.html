@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Check-in Planner</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#3854ff" />
+    <link rel="apple-touch-icon" href="#" />
   </head>
   <body>
     <main class="app">
@@ -79,6 +82,11 @@
             until 2 weeks overdue, then red afterward.
           </p>
 
+          <label>
+            Labels (optional, comma separated)
+            <input type="text" id="labels" name="labels" placeholder="family, housework, urgent" />
+          </label>
+
           <button type="submit">Add check-in</button>
         </form>
       </section>
@@ -92,6 +100,36 @@
             <span class="legend-item red">Red</span>
           </div>
         </div>
+        
+        <div class="filters">
+          <div class="filter-group">
+            <label>Filter by status:</label>
+            <select id="status-filter">
+              <option value="all">All</option>
+              <option value="red">Red</option>
+              <option value="yellow">Yellow</option>
+              <option value="ontime">On time</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label>Filter by time:</label>
+            <select id="time-filter">
+              <option value="all">All</option>
+              <option value="today">Due today</option>
+              <option value="week">Due this week</option>
+              <option value="month">Due this month</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label>Filter by label:</label>
+            <select id="label-filter">
+              <option value="all">All labels</option>
+            </select>
+          </div>
+        </div>
+        
         <div id="checkins" class="checkins"></div>
       </section>
     </main>
@@ -102,6 +140,7 @@
           <div>
             <h3 class="checkin-title"></h3>
             <p class="checkin-frequency"></p>
+            <div class="checkin-labels"></div>
           </div>
           <span class="status-pill"></span>
         </div>
@@ -117,6 +156,13 @@
       </article>
     </template>
 
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js')
+          .then(registration => console.log('Service Worker registered'))
+          .catch(error => console.log('Service Worker registration failed:', error));
+      }
+    </script>
     <script src="app.js"></script>
   </body>
 </html>

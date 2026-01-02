@@ -3,6 +3,9 @@ const STORAGE_KEY = "checkin-items";
 const form = document.querySelector("#checkin-form");
 const checkinsContainer = document.querySelector("#checkins");
 const template = document.querySelector("#checkin-template");
+const statusFilter = document.querySelector("#status-filter");
+const timeFilter = document.querySelector("#time-filter");
+const labelFilter = document.querySelector("#label-filter");
 
 const formatDate = (date) =>
   new Intl.DateTimeFormat("en-US", {
@@ -46,7 +49,12 @@ const loadCheckins = () => {
 };
 
 const saveCheckins = (checkins) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(checkins));
+  } catch (error) {
+    console.error("Failed to save check-ins", error);
+    alert("Failed to save check-ins. Your device may be in private browsing mode or storage is full.");
+  }
 };
 
 const computeStatus = (checkin) => {
@@ -72,6 +80,7 @@ const buildCheckinCard = (checkin) => {
   const card = node.querySelector(".checkin-card");
   const title = node.querySelector(".checkin-title");
   const frequency = node.querySelector(".checkin-frequency");
+  const labelsContainer = node.querySelector(".checkin-labels");
   const statusPill = node.querySelector(".status-pill");
   const due = node.querySelector(".checkin-due");
   const last = node.querySelector(".checkin-last");
@@ -83,6 +92,20 @@ const buildCheckinCard = (checkin) => {
 
   title.textContent = checkin.title;
   frequency.textContent = `Every ${checkin.frequencyValue} ${checkin.frequencyUnit}`;
+  
+  // Display labels
+  if (checkin.labels && checkin.labels.length > 0) {
+    const labelsSpan = document.createElement('div');
+    labelsSpan.className = 'labels';
+    checkin.labels.forEach(label => {
+      const labelTag = document.createElement('span');
+      labelTag.className = 'label-tag';
+      labelTag.textContent = label;
+      labelsSpan.appendChild(labelTag);
+    });
+    labelsContainer.appendChild(labelsSpan);
+  }
+  
   statusPill.textContent = state === "ontime" ? "On time" : state;
   statusPill.classList.add(state);
 
@@ -122,21 +145,112 @@ const saveAndRender = () => {
   renderCheckins();
 };
 
+const getUniqueLabels = () => {
+  const labels = new Set();
+  checkins.forEach(checkin => {
+    if (checkin.labels) {
+      checkin.labels.forEach(label => labels.add(label));
+    }
+  });
+  return Array.from(labels).sort();
+};
+
+const updateLabelFilter = () => {
+  const currentSelection = labelFilter.value;
+  labelFilter.innerHTML = '<option value="all">All labels</option>';
+  
+  const labels = getUniqueLabels();
+  labels.forEach(label => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    labelFilter.appendChild(option);
+  });
+  
+  // Restore selection if it still exists
+  if (labels.includes(currentSelection) || currentSelection === 'all') {
+    labelFilter.value = currentSelection;
+  }
+};
+
+const filterCheckins = () => {
+  let filtered = [...checkins];
+  
+  // Status filter
+  const statusValue = statusFilter.value;
+  if (statusValue !== 'all') {
+    filtered = filtered.filter(checkin => {
+      const { state } = computeStatus(checkin);
+      return state === statusValue;
+    });
+  }
+  
+  // Time filter
+  const timeValue = timeFilter.value;
+  if (timeValue !== 'all') {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    filtered = filtered.filter(checkin => {
+      const dueDate = new Date(checkin.nextDueDate);
+      const dueDateStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+      
+      if (timeValue === 'today') {
+        return dueDateStart.getTime() === today.getTime();
+      } else if (timeValue === 'week') {
+        const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        return dueDateStart >= today && dueDateStart <= weekFromNow;
+      } else if (timeValue === 'month') {
+        const monthFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+        return dueDateStart >= today && dueDateStart <= monthFromNow;
+      }
+      return true;
+    });
+  }
+  
+  // Label filter
+  const labelValue = labelFilter.value;
+  if (labelValue !== 'all') {
+    filtered = filtered.filter(checkin => 
+      checkin.labels && checkin.labels.includes(labelValue)
+    );
+  }
+  
+  return filtered;
+};
+
 const renderCheckins = () => {
   checkinsContainer.innerHTML = "";
-  if (checkins.length === 0) {
+  updateLabelFilter();
+  
+  const filteredCheckins = filterCheckins();
+  
+  if (filteredCheckins.length === 0) {
     const empty = document.createElement("p");
-    empty.textContent =
-      "No check-ins yet. Add your first recurring check-in above.";
+    empty.textContent = checkins.length === 0 
+      ? "No check-ins yet. Add your first recurring check-in above."
+      : "No check-ins match the current filters.";
     empty.classList.add("helper");
     checkinsContainer.appendChild(empty);
     return;
   }
 
-  checkins
-    .sort(
-      (a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime(),
-    )
+  // Sort by status priority (red first, then yellow, then on time), then by due date
+  filteredCheckins
+    .sort((a, b) => {
+      const { state: stateA } = computeStatus(a);
+      const { state: stateB } = computeStatus(b);
+      
+      const priority = { red: 0, yellow: 1, ontime: 2 };
+      const priorityA = priority[stateA];
+      const priorityB = priority[stateB];
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      
+      return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime();
+    })
     .forEach((checkin) => {
       checkinsContainer.appendChild(buildCheckinCard(checkin));
     });
@@ -151,6 +265,7 @@ form.addEventListener("submit", (event) => {
   const firstDueDate = parseDateInput(String(formData.get("first-due-date")));
   const yellowThresholdDays = Number(formData.get("yellow-threshold"));
   const redThresholdDays = Number(formData.get("red-threshold"));
+  const labelsInput = String(formData.get("labels") || "").trim();
 
   if (!title) {
     return;
@@ -161,6 +276,9 @@ form.addEventListener("submit", (event) => {
     return;
   }
 
+  // Parse labels
+  const labels = labelsInput ? labelsInput.split(',').map(label => label.trim()).filter(label => label.length > 0) : [];
+
   const newCheckin = {
     id: crypto.randomUUID(),
     title,
@@ -170,6 +288,7 @@ form.addEventListener("submit", (event) => {
     lastCheckInDate: null,
     yellowThresholdDays,
     redThresholdDays,
+    labels,
   };
 
   checkins.unshift(newCheckin);
@@ -190,3 +309,8 @@ const setDefaultDate = () => {
 
 setDefaultDate();
 renderCheckins();
+
+// Add event listeners for filters
+statusFilter.addEventListener('change', renderCheckins);
+timeFilter.addEventListener('change', renderCheckins);
+labelFilter.addEventListener('change', renderCheckins);
