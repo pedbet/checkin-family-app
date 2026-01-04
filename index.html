@@ -28,101 +28,54 @@
           <button id="checkins-view-btn" class="view-btn active">Check-ins</button>
           <button id="tasks-view-btn" class="view-btn">Tasks</button>
         </div>
+        <div class="search-container">
+          <input type="text" id="search-input" placeholder="Search check-ins and tasks..." />
+        </div>
+        <div class="import-export">
+          <button id="import-btn">Import JSON</button>
+          <button id="export-btn">Export JSON</button>
+          <input type="file" id="import-file" accept=".json" style="display: none;" />
+        </div>
       </header>
 
-      <section id="checkins-view" class="view-panel">
-        <div class="add-checkin-container">
-          <button id="add-checkin-btn" class="add-checkin-btn">+ Add Check-in</button>
-        </div>
-        
-        <div class="swim-lanes-container">
-          <div class="swim-lane-header">
-            <h2>Your check-ins</h2>
-            <div class="legend">
-              <span class="legend-item ontime">On time</span>
-              <span class="legend-item yellow">Yellow</span>
-              <span class="legend-item red">Red</span>
-            </div>
+      <!-- Check-in Modal -->
+      <div id="checkin-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Add a check-in</h2>
+            <button class="close-btn" id="close-checkin-modal">&times;</button>
           </div>
-          
-          <div class="swim-lanes">
-            <div class="swim-lane">
-              <div class="lane-header">
-                <h3>Lane 1</h3>
-                <select id="lane1-select" class="lane-select">
-                  <option value="">Select labels...</option>
-                </select>
-              </div>
-              <div id="lane1" class="lane-content"></div>
-            </div>
-            <div class="swim-lane">
-              <div class="lane-header">
-                <h3>Lane 2</h3>
-                <select id="lane2-select" class="lane-select">
-                  <option value="">Select labels...</option>
-                </select>
-              </div>
-              <div id="lane2" class="lane-content"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="tasks-view" class="view-panel" style="display: none;">
-        <div class="add-task-container">
-          <button id="add-task-btn" class="add-task-btn">+ Add Task</button>
-        </div>
-        
-        <div class="tasks-container">
-          <div class="section-header">
-            <h2>Your tasks</h2>
-            <div class="legend">
-              <span class="legend-item ontime">New</span>
-              <span class="legend-item yellow">7+ days</span>
-              <span class="legend-item red">14+ days</span>
-            </div>
-          </div>
-          <div id="tasks" class="tasks"></div>
-        </div>
-      </section>
-    </main>
-
-    <!-- Check-in Modal -->
-    <div id="checkin-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Add Check-in</h2>
-          <button class="close-btn" id="close-checkin-modal">&times;</button>
-        </div>
-        <form id="checkin-form">
+          <form id="checkin-form">
           <label>
             Check-in name
             <input type="text" id="title" name="title" placeholder="Call Grandma" required />
           </label>
 
-          <label>
-            Frequency
-            <div class="row inline">
-              <input
-                type="number"
-                id="frequency-value"
-                name="frequency-value"
-                min="1"
-                value="1"
-                required
-              />
-              <select id="frequency-unit" name="frequency-unit">
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-                <option value="months" selected>Months</option>
-              </select>
-            </div>
-          </label>
+          <div class="row">
+            <label>
+              Frequency
+              <div class="row inline">
+                <input
+                  type="number"
+                  id="frequency-value"
+                  name="frequency-value"
+                  min="1"
+                  value="1"
+                  required
+                />
+                <select id="frequency-unit" name="frequency-unit">
+                  <option value="days">Days</option>
+                  <option value="weeks">Weeks</option>
+                  <option value="months" selected>Months</option>
+                </select>
+              </div>
+            </label>
 
-          <label>
-            First due date
-            <input type="date" id="first-due-date" name="first-due-date" required />
-          </label>
+            <label>
+              First due date
+              <input type="date" id="first-due-date" name="first-due-date" required />
+            </label>
+          </div>
 
           <div class="row">
             <label>
@@ -160,31 +113,105 @@
 
           <button type="submit">Add check-in</button>
         </form>
-      </div>
-    </div>
-
-    <!-- Task Modal -->
-    <div id="task-modal" class="modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Add Task</h2>
-          <button class="close-btn" id="close-task-modal">&times;</button>
         </div>
-        <form id="task-form">
-          <label>
-            Task title
-            <input type="text" id="task-title" name="task-title" placeholder="Clean the garage" required />
-          </label>
-
-          <label>
-            Labels (optional, comma separated)
-            <input type="text" id="task-labels" name="task-labels" placeholder="home, weekend, urgent" />
-          </label>
-
-          <button type="submit">Add task</button>
-        </form>
       </div>
-    </div>
+
+      <!-- Task Modal -->
+      <div id="task-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Add a task</h2>
+            <button class="close-btn" id="close-task-modal">&times;</button>
+          </div>
+          <form id="task-form">
+            <label>
+              Task name
+              <input type="text" id="task-title" name="title" placeholder="Clean the garage" required />
+            </label>
+
+            <label>
+              Labels (optional, comma separated)
+              <input type="text" id="task-labels" name="labels" placeholder="home, weekend, urgent" />
+            </label>
+
+            <button type="submit">Add task</button>
+          </form>
+        </div>
+      </div>
+
+      <section id="checkins-section" class="panel">
+        <div class="section-header">
+          <h2>Your check-ins</h2>
+          <div class="legend">
+            <span class="legend-item ontime">On time</span>
+            <span class="legend-item yellow">Yellow</span>
+            <span class="legend-item red">Red</span>
+          </div>
+        </div>
+        
+        <div class="filters">
+          <div class="filter-group">
+            <label>Filter by status:</label>
+            <select id="status-filter">
+              <option value="all">All</option>
+              <option value="red">Red</option>
+              <option value="yellow">Yellow</option>
+              <option value="ontime">On time</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label>Filter by time:</label>
+            <select id="time-filter">
+              <option value="all">All</option>
+              <option value="today">Due today</option>
+              <option value="week">Due this week</option>
+              <option value="month">Due this month</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label>Filter by label:</label>
+            <select id="label-filter">
+              <option value="all">All labels</option>
+            </select>
+          </div>
+        </div>
+        
+        <div id="checkins" class="checkins"></div>
+      </section>
+
+      <section id="tasks-section" class="panel" style="display: none;">
+        <div class="section-header">
+          <h2>Your tasks</h2>
+          <div class="legend">
+            <span class="legend-item ontime">Recent</span>
+            <span class="legend-item yellow">1 week+</span>
+            <span class="legend-item red">2 weeks+</span>
+          </div>
+        </div>
+        
+        <div class="filters">
+          <div class="filter-group">
+            <label>Filter by status:</label>
+            <select id="task-status-filter">
+              <option value="all">All</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label>Filter by label:</label>
+            <select id="task-label-filter">
+              <option value="all">All labels</option>
+            </select>
+          </div>
+        </div>
+        
+        <div id="tasks" class="tasks"></div>
+      </section>
+    </main>
 
     <template id="checkin-template">
       <article class="checkin-card">
