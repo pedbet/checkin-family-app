@@ -115,8 +115,7 @@ const saveTasks = (tasks) => {
   }
 };
 
-// Check-in functions
-const computeStatus = (checkin) => {
+const getCheckinStatus = (checkin) => {
   const dueDate = new Date(checkin.nextDueDate);
   const now = new Date();
   const msDiff = now.setHours(0, 0, 0, 0) - dueDate.setHours(0, 0, 0, 0);
@@ -134,6 +133,26 @@ const computeStatus = (checkin) => {
   return { state: "red", overdueDays };
 };
 
+const getTaskStatus = (task) => {
+  if (task.completed) {
+    return { state: "completed", daysOld: 0 };
+  }
+  
+  const createdDate = new Date(task.createdDate);
+  const now = new Date();
+  const msDiff = now - createdDate;
+  const daysOld = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+  
+  let state = "ontime";
+  if (daysOld >= 14) {
+    state = "red";
+  } else if (daysOld >= 7) {
+    state = "yellow";
+  }
+  
+  return { state, daysOld };
+};
+
 const createCheckinCard = (checkin) => {
   const node = checkinTemplate.content.cloneNode(true);
   const card = node.querySelector(".checkin-card");
@@ -147,7 +166,7 @@ const createCheckinCard = (checkin) => {
   const checkinNow = node.querySelector(".checkin-now");
   const deleteButton = node.querySelector(".delete");
 
-  const { state, overdueDays } = getCheckinStatus(checkin);
+  const { state, overdueDays } = computeStatus(checkin);
 
   title.textContent = checkin.title;
   frequency.textContent = `Every ${checkin.frequencyValue} ${checkin.frequencyUnit}`;
@@ -197,28 +216,7 @@ const createCheckinCard = (checkin) => {
   return node;
 };
 
-// Task functions
-const computeTaskStatus = (task) => {
-  if (task.completed) {
-    return { state: "completed", daysOld: 0 };
-  }
-  
-  const createdDate = new Date(task.createdDate);
-  const now = new Date();
-  const msDiff = now - createdDate;
-  const daysOld = Math.floor(msDiff / (1000 * 60 * 60 * 24));
-  
-  let state = "ontime";
-  if (daysOld >= 14) {
-    state = "red";
-  } else if (daysOld >= 7) {
-    state = "yellow";
-  }
-  
-  return { state, daysOld };
-};
-
-const buildTaskCard = (task) => {
+const createTaskCard = (task) => {
   const node = taskTemplate.content.cloneNode(true);
   const card = node.querySelector(".task-card");
   const title = node.querySelector(".task-title");
@@ -229,7 +227,7 @@ const buildTaskCard = (task) => {
   const completeButton = node.querySelector(".complete-task");
   const deleteButton = node.querySelector(".delete");
 
-  const { state, daysOld } = computeTaskStatus(task);
+  const { state, daysOld } = getTaskStatus(task);
 
   title.textContent = task.title;
   
@@ -247,33 +245,29 @@ const buildTaskCard = (task) => {
   }
   
   statusPill.textContent = task.completed ? "Completed" : 
-    state === "ontime" ? "Recent" : 
-    state === "yellow" ? "1 week+" : "2 weeks+";
+    state === "ontime" ? "New" : state;
   statusPill.classList.add(state);
-  
-  if (task.completed) {
-    card.classList.add("completed");
-    completeButton.textContent = "Completed";
-    completeButton.disabled = true;
-  }
 
-  created.textContent = `Created: ${formatDate(new Date(task.createdDate))}`;
+  const createdDate = new Date(task.createdDate);
+  created.textContent = `Created: ${formatDate(createdDate)}`;
   age.textContent = task.completed 
-    ? `Completed on ${formatDate(new Date(task.completedDate))}`
+    ? `Completed: ${formatDate(new Date(task.completedDate))}`
     : `${daysOld} day${daysOld === 1 ? "" : "s"} old`;
 
   completeButton.addEventListener("click", () => {
-    if (!task.completed) {
-      task.completed = true;
-      task.completedDate = new Date().toISOString();
-      saveAndRender();
-    }
+    task.completed = true;
+    task.completedDate = new Date().toISOString();
+    saveAndRender();
   });
 
   deleteButton.addEventListener("click", () => {
     tasks = tasks.filter((item) => item.id !== task.id);
     saveAndRender();
   });
+
+  if (task.completed) {
+    card.classList.add('completed');
+  }
 
   card.dataset.id = task.id;
   return node;
@@ -437,15 +431,19 @@ const renderCheckins = () => {
 
 const renderTasks = () => {
   tasksContainer.innerHTML = "";
-  updateLabelFilters();
   
-  const filteredTasks = filterTasks();
+  const filteredTasks = tasks.filter(task => {
+    if (searchTerm) {
+      return task.title.toLowerCase().includes(searchTerm.toLowerCase());
+    }
+    return true;
+  });
   
   if (filteredTasks.length === 0) {
     const empty = document.createElement("p");
     empty.textContent = tasks.length === 0 
       ? "No tasks yet. Add your first task."
-      : "No tasks match the current filters.";
+      : "No tasks match the current search.";
     empty.classList.add("helper");
     tasksContainer.appendChild(empty);
     return;
@@ -463,7 +461,7 @@ const renderTasks = () => {
       return new Date(b.completedDate || 0).getTime() - new Date(a.completedDate || 0).getTime();
     })
     .forEach((task) => {
-      tasksContainer.appendChild(buildTaskCard(task));
+      tasksContainer.appendChild(createTaskCard(task));
     });
 };
 
@@ -526,7 +524,10 @@ const exportData = () => {
   URL.revokeObjectURL(url);
 };
 
-const importData = (file) => {
+const importData = (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -542,6 +543,7 @@ const importData = (file) => {
         saveTasks(tasks);
       }
       
+      populateLaneSelects();
       render();
       alert("Data imported successfully!");
     } catch (error) {
@@ -549,7 +551,10 @@ const importData = (file) => {
       alert("Failed to import data. Please check the file format.");
     }
   };
+  
   reader.readAsText(file);
+  // Clear the file input
+  event.target.value = '';
 };
 
 // Event listeners
@@ -558,30 +563,24 @@ addTaskBtn.addEventListener("click", () => openModal(taskModal));
 closeCheckinModal.addEventListener("click", () => closeModal(checkinModal));
 closeTaskModal.addEventListener("click", () => closeModal(taskModal));
 
-checkinsViewBtn.addEventListener("click", () => switchView("checkins"));
-tasksViewBtn.addEventListener("click", () => switchView("tasks"));
+checkinsViewBtn.addEventListener("click", () => switchToView("checkins"));
+tasksViewBtn.addEventListener("click", () => switchToView("tasks"));
 
 exportBtn.addEventListener("click", exportData);
 importBtn.addEventListener("click", () => importFile.click());
-importFile.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    importData(file);
-  }
-  e.target.value = ""; // Reset file input
-});
+importFile.addEventListener("change", importData);
 
-searchInput.addEventListener("input", (e) => {
-  searchTerm = e.target.value;
+searchInput.addEventListener("input", (event) => {
+  searchTerm = event.target.value.toLowerCase();
   render();
 });
 
 // Close modal when clicking outside
-window.addEventListener("click", (e) => {
-  if (e.target === checkinModal) {
+window.addEventListener("click", (event) => {
+  if (event.target === checkinModal) {
     closeModal(checkinModal);
   }
-  if (e.target === taskModal) {
+  if (event.target === taskModal) {
     closeModal(taskModal);
   }
 });
@@ -707,8 +706,15 @@ const renderSwimLanes = () => {
   const lane1Labels = lane1Select.value;
   const lane2Labels = lane2Select.value;
   
-  const lane1Checkins = filterCheckinsForLane(checkins, lane1Labels);
-  const lane2Checkins = filterCheckinsForLane(checkins, lane2Labels);
+  let filteredCheckins = checkins;
+  if (searchTerm) {
+    filteredCheckins = filteredCheckins.filter(checkin => 
+      checkin.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }
+  
+  const lane1Checkins = filterCheckinsForLane(filteredCheckins, lane1Labels);
+  const lane2Checkins = filterCheckinsForLane(filteredCheckins, lane2Labels);
   
   // Sort checkins by priority (red > yellow > ontime) then by due date
   const sortByPriority = (a, b) => {
@@ -716,8 +722,8 @@ const renderSwimLanes = () => {
     const statusB = getCheckinStatus(b);
     
     const priorityOrder = { red: 0, yellow: 1, ontime: 2 };
-    const priorityA = priorityOrder[statusA];
-    const priorityB = priorityOrder[statusB];
+    const priorityA = priorityOrder[statusA.state];
+    const priorityB = priorityOrder[statusB.state];
     
     if (priorityA !== priorityB) {
       return priorityA - priorityB;
