@@ -22,6 +22,7 @@
           <div class="header-actions">
             <button id="add-checkin-btn" class="primary-btn">+ Add Check-in</button>
             <button id="add-task-btn" class="secondary-btn">+ Add Task</button>
+            <button id="undo-btn" class="undo-btn" disabled>↶ Undo</button>
           </div>
         </div>
         <div class="view-switcher">
@@ -150,32 +151,18 @@
         </div>
         
         <div class="filters">
-          <div class="filter-group">
-            <label>Filter by status:</label>
-            <select id="status-filter">
-              <option value="all">All</option>
-              <option value="red">Red</option>
-              <option value="yellow">Yellow</option>
-              <option value="ontime">On time</option>
-            </select>
-          </div>
-          
-          <div class="filter-group">
-            <label>Filter by time:</label>
-            <select id="time-filter">
-              <option value="all">All</option>
-              <option value="today">Due today</option>
-              <option value="week">Due this week</option>
-              <option value="month">Due this month</option>
-            </select>
-          </div>
-          
-          <div class="filter-group">
-            <label>Filter by label:</label>
-            <select id="label-filter">
-              <option value="all">All labels</option>
-            </select>
-          </div>
+          <select id="status-filter">
+            <option value="all">All statuses</option>
+            <option value="ontime">On time</option>
+            <option value="yellow">Yellow</option>
+            <option value="red">Red</option>
+          </select>
+          <select id="time-filter">
+            <option value="all">All time</option>
+            <option value="today">Due today</option>
+            <option value="week">Due this week</option>
+            <option value="month">Due this month</option>
+          </select>
         </div>
         
         <div id="checkins" class="checkins"></div>
@@ -256,7 +243,7 @@
     </template>
 
     <script>
-      if ('serviceWorker' in navigator) {
+      if ('serviceWorker' in navigator && location.protocol !== 'file:') {
         navigator.serviceWorker.register('./sw.js')
           .then(registration => console.log('Service Worker registered'))
           .catch(error => console.log('Service Worker registration failed:', error));

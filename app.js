@@ -8,6 +8,10 @@ const checkinsContainer = document.querySelector("#checkins");
 const tasksContainer = document.querySelector("#tasks");
 const checkinTemplate = document.querySelector("#checkin-template");
 const taskTemplate = document.querySelector("#task-template");
+const statusFilter = document.querySelector("#status-filter");
+const timeFilter = document.querySelector("#time-filter");
+const taskStatusFilter = document.querySelector("#task-status-filter");
+const taskLabelFilter = document.querySelector("#task-label-filter");
 const searchInput = document.querySelector("#search-input");
 
 // Modal elements
@@ -21,14 +25,8 @@ const closeTaskModal = document.querySelector("#close-task-modal");
 // View switcher
 const checkinsViewBtn = document.querySelector("#checkins-view-btn");
 const tasksViewBtn = document.querySelector("#tasks-view-btn");
-const checkinsView = document.querySelector("#checkins-view");
-const tasksView = document.querySelector("#tasks-view");
-
-// Swim lane elements
-const lane1Container = document.querySelector("#lane1");
-const lane2Container = document.querySelector("#lane2");
-const lane1Select = document.querySelector("#lane1-select");
-const lane2Select = document.querySelector("#lane2-select");
+const checkinsSection = document.querySelector("#checkins-section");
+const tasksSection = document.querySelector("#tasks-section");
 
 // Import/Export
 const importBtn = document.querySelector("#import-btn");
@@ -40,6 +38,79 @@ let currentView = "checkins";
 let checkins = [];
 let tasks = [];
 let searchTerm = "";
+
+// Undo system
+let actionHistory = [];
+const MAX_HISTORY_SIZE = 50;
+
+// Action types
+const ACTION_TYPES = {
+  ADD_CHECKIN: 'add_checkin',
+  ADD_TASK: 'add_task',
+  COMPLETE_CHECKIN: 'complete_checkin',
+  COMPLETE_TASK: 'complete_task',
+  DELETE_CHECKIN: 'delete_checkin',
+  DELETE_TASK: 'delete_task'
+};
+
+// Undo functions
+const addAction = (action) => {
+  actionHistory.push(action);
+  if (actionHistory.length > MAX_HISTORY_SIZE) {
+    actionHistory.shift();
+  }
+  updateUndoButton();
+};
+
+const updateUndoButton = () => {
+  const undoBtn = document.querySelector("#undo-btn");
+  if (actionHistory.length > 0) {
+    const lastAction = actionHistory[actionHistory.length - 1];
+    undoBtn.textContent = `↶ Undo ${lastAction.description}`;
+    undoBtn.disabled = false;
+  } else {
+    undoBtn.textContent = "↶ Undo";
+    undoBtn.disabled = true;
+  }
+};
+
+const undoLastAction = () => {
+  if (actionHistory.length === 0) return;
+  
+  const action = actionHistory.pop();
+  
+  switch (action.type) {
+    case ACTION_TYPES.ADD_CHECKIN:
+      checkins = checkins.filter(c => c.id !== action.itemId);
+      break;
+    case ACTION_TYPES.ADD_TASK:
+      tasks = tasks.filter(t => t.id !== action.itemId);
+      break;
+    case ACTION_TYPES.COMPLETE_CHECKIN:
+      const checkin = checkins.find(c => c.id === action.itemId);
+      if (checkin) {
+        checkin.lastCheckInDate = action.previousState.lastCheckInDate;
+        checkin.nextDueDate = action.previousState.nextDueDate;
+      }
+      break;
+    case ACTION_TYPES.COMPLETE_TASK:
+      const task = tasks.find(t => t.id === action.itemId);
+      if (task) {
+        task.completed = action.previousState.completed;
+        task.completedDate = action.previousState.completedDate;
+      }
+      break;
+    case ACTION_TYPES.DELETE_CHECKIN:
+      checkins.push(action.previousState);
+      break;
+    case ACTION_TYPES.DELETE_TASK:
+      tasks.push(action.previousState);
+      break;
+  }
+  
+  saveAndRender();
+  updateUndoButton();
+};
 
 // Utility functions
 const formatDate = (date) =>
@@ -115,7 +186,8 @@ const saveTasks = (tasks) => {
   }
 };
 
-const getCheckinStatus = (checkin) => {
+// Check-in functions
+const computeStatus = (checkin) => {
   const dueDate = new Date(checkin.nextDueDate);
   const now = new Date();
   const msDiff = now.setHours(0, 0, 0, 0) - dueDate.setHours(0, 0, 0, 0);
@@ -133,27 +205,7 @@ const getCheckinStatus = (checkin) => {
   return { state: "red", overdueDays };
 };
 
-const getTaskStatus = (task) => {
-  if (task.completed) {
-    return { state: "completed", daysOld: 0 };
-  }
-  
-  const createdDate = new Date(task.createdDate);
-  const now = new Date();
-  const msDiff = now - createdDate;
-  const daysOld = Math.floor(msDiff / (1000 * 60 * 60 * 24));
-  
-  let state = "ontime";
-  if (daysOld >= 14) {
-    state = "red";
-  } else if (daysOld >= 7) {
-    state = "yellow";
-  }
-  
-  return { state, daysOld };
-};
-
-const createCheckinCard = (checkin) => {
+const buildCheckinCard = (checkin) => {
   const node = checkinTemplate.content.cloneNode(true);
   const card = node.querySelector(".checkin-card");
   const title = node.querySelector(".checkin-title");
@@ -198,17 +250,40 @@ const createCheckinCard = (checkin) => {
       : `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`;
 
   checkinNow.addEventListener("click", () => {
+    // Store previous state for undo
+    const previousState = {
+      lastCheckInDate: checkin.lastCheckInDate,
+      nextDueDate: checkin.nextDueDate
+    };
+    
     checkin.lastCheckInDate = new Date().toISOString();
     checkin.nextDueDate = addInterval(
       new Date(),
       checkin.frequencyValue,
       checkin.frequencyUnit,
     ).toISOString();
+    
+    addAction({
+      type: ACTION_TYPES.COMPLETE_CHECKIN,
+      itemId: checkin.id,
+      description: `check-in "${checkin.title}"`,
+      previousState
+    });
+    
     saveAndRender();
   });
 
   deleteButton.addEventListener("click", () => {
+    const previousState = { ...checkin };
     checkins = checkins.filter((item) => item.id !== checkin.id);
+    
+    addAction({
+      type: ACTION_TYPES.DELETE_CHECKIN,
+      itemId: checkin.id,
+      description: `delete check-in "${checkin.title}"`,
+      previousState
+    });
+    
     saveAndRender();
   });
 
@@ -216,7 +291,28 @@ const createCheckinCard = (checkin) => {
   return node;
 };
 
-const createTaskCard = (task) => {
+// Task functions
+const computeTaskStatus = (task) => {
+  if (task.completed) {
+    return { state: "completed", daysOld: 0 };
+  }
+  
+  const createdDate = new Date(task.createdDate);
+  const now = new Date();
+  const msDiff = now - createdDate;
+  const daysOld = Math.floor(msDiff / (1000 * 60 * 60 * 24));
+  
+  let state = "ontime";
+  if (daysOld >= 14) {
+    state = "red";
+  } else if (daysOld >= 7) {
+    state = "yellow";
+  }
+  
+  return { state, daysOld };
+};
+
+const buildTaskCard = (task) => {
   const node = taskTemplate.content.cloneNode(true);
   const card = node.querySelector(".task-card");
   const title = node.querySelector(".task-title");
@@ -227,7 +323,7 @@ const createTaskCard = (task) => {
   const completeButton = node.querySelector(".complete-task");
   const deleteButton = node.querySelector(".delete");
 
-  const { state, daysOld } = getTaskStatus(task);
+  const { state, daysOld } = computeTaskStatus(task);
 
   title.textContent = task.title;
   
@@ -245,29 +341,56 @@ const createTaskCard = (task) => {
   }
   
   statusPill.textContent = task.completed ? "Completed" : 
-    state === "ontime" ? "New" : state;
+    state === "ontime" ? "Recent" : 
+    state === "yellow" ? "1 week+" : "2 weeks+";
   statusPill.classList.add(state);
+  
+  if (task.completed) {
+    card.classList.add("completed");
+    completeButton.textContent = "Completed";
+    completeButton.disabled = true;
+  }
 
-  const createdDate = new Date(task.createdDate);
-  created.textContent = `Created: ${formatDate(createdDate)}`;
+  created.textContent = `Created: ${formatDate(new Date(task.createdDate))}`;
   age.textContent = task.completed 
-    ? `Completed: ${formatDate(new Date(task.completedDate))}`
+    ? `Completed on ${formatDate(new Date(task.completedDate))}`
     : `${daysOld} day${daysOld === 1 ? "" : "s"} old`;
 
   completeButton.addEventListener("click", () => {
-    task.completed = true;
-    task.completedDate = new Date().toISOString();
-    saveAndRender();
+    if (!task.completed) {
+      // Store previous state for undo
+      const previousState = {
+        completed: task.completed,
+        completedDate: task.completedDate
+      };
+      
+      task.completed = true;
+      task.completedDate = new Date().toISOString();
+      
+      addAction({
+        type: ACTION_TYPES.COMPLETE_TASK,
+        itemId: task.id,
+        description: `complete task "${task.title}"`,
+        previousState
+      });
+      
+      saveAndRender();
+    }
   });
 
   deleteButton.addEventListener("click", () => {
+    const previousState = { ...task };
     tasks = tasks.filter((item) => item.id !== task.id);
+    
+    addAction({
+      type: ACTION_TYPES.DELETE_TASK,
+      itemId: task.id,
+      description: `delete task "${task.title}"`,
+      previousState
+    });
+    
     saveAndRender();
   });
-
-  if (task.completed) {
-    card.classList.add('completed');
-  }
 
   card.dataset.id = task.id;
   return node;
@@ -343,14 +466,6 @@ const filterCheckins = () => {
     });
   }
   
-  // Label filter
-  const labelValue = labelFilter.value;
-  if (labelValue !== 'all') {
-    filtered = filtered.filter(checkin => 
-      checkin.labels && checkin.labels.includes(labelValue)
-    );
-  }
-  
   return filtered;
 };
 
@@ -390,23 +505,7 @@ const filterTasks = () => {
 
 // Render functions
 const updateLabelFilters = () => {
-  // Update checkin label filter
-  const currentCheckinSelection = labelFilter.value;
-  labelFilter.innerHTML = '<option value="all">All labels</option>';
-  
-  const checkinLabels = getUniqueLabels(checkins);
-  checkinLabels.forEach(label => {
-    const option = document.createElement('option');
-    option.value = label;
-    option.textContent = label;
-    labelFilter.appendChild(option);
-  });
-  
-  if (checkinLabels.includes(currentCheckinSelection) || currentCheckinSelection === 'all') {
-    labelFilter.value = currentCheckinSelection;
-  }
-  
-  // Update task label filter
+  // Only update task label filter (check-in label filter removed)
   const currentTaskSelection = taskLabelFilter.value;
   taskLabelFilter.innerHTML = '<option value="all">All labels</option>';
   
@@ -424,26 +523,154 @@ const updateLabelFilters = () => {
 };
 
 const renderCheckins = () => {
-  if (currentView === 'checkins') {
-    renderSwimLanes();
+  console.log("renderCheckins called");
+  checkinsContainer.innerHTML = "";
+  updateLabelFilters();
+  
+  const filteredCheckins = filterCheckins();
+  console.log("Filtered checkins:", filteredCheckins.length);
+  
+  if (filteredCheckins.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = checkins.length === 0 
+      ? "No check-ins yet. Add your first recurring check-in."
+      : "No check-ins match the current filters.";
+    empty.classList.add("helper");
+    checkinsContainer.appendChild(empty);
+    return;
   }
+
+  // Create swim lanes
+  const swimLanesContainer = document.createElement("div");
+  swimLanesContainer.className = "swim-lanes";
+  
+  // Default to showing "All check-ins" and top label, or two top labels
+  const topLabels = getTopLabels(filteredCheckins, 1);
+  const defaultLabels = ["All check-ins"];
+  
+  if (topLabels.length > 0) {
+    defaultLabels.push(topLabels[0]);
+  }
+  
+  // If we still don't have 2 lanes, add unlabeled
+  if (defaultLabels.length < 2) {
+    defaultLabels.push("Unlabeled");
+  }
+  
+  console.log("Default labels for lanes:", defaultLabels);
+  
+  defaultLabels.forEach((label, index) => {
+    const lane = document.createElement("div");
+    lane.className = "swim-lane";
+    
+    const header = document.createElement("div");
+    header.className = "swim-lane-header";
+    
+    const title = document.createElement("h3");
+    title.className = "swim-lane-title";
+    title.textContent = label;
+    
+    const dropdown = document.createElement("select");
+    dropdown.className = "swim-lane-dropdown";
+    dropdown.dataset.laneIndex = index;
+    
+    const allLabels = ["All check-ins", ...getUniqueLabels(checkins), "Unlabeled"];
+    console.log("Available labels for dropdown:", allLabels);
+    
+    allLabels.forEach(l => {
+      const option = document.createElement("option");
+      option.value = l === "All check-ins" ? "all" : (l === "Unlabeled" ? "" : l);
+      option.textContent = l;
+      option.selected = l === label;
+      dropdown.appendChild(option);
+    });
+    
+    dropdown.addEventListener("change", (e) => {
+      console.log("Swim lane dropdown changed:", e.target.value, "Lane index:", index);
+      renderCheckins();
+    });
+    
+    header.appendChild(title);
+    header.appendChild(dropdown);
+    
+    const content = document.createElement("div");
+    content.className = "swim-lane-content";
+    
+    const laneCheckins = document.createElement("div");
+    laneCheckins.className = "checkins";
+    
+    // Filter checkins for this lane
+    setTimeout(() => {
+      const laneLabel = dropdown.value;
+      console.log("Lane label:", laneLabel, "for lane:", label);
+      let laneFiltered;
+      
+      if (laneLabel === "all") {
+        laneFiltered = filteredCheckins;
+      } else if (laneLabel === "") {
+        laneFiltered = filteredCheckins.filter(checkin => 
+          !checkin.labels || checkin.labels.length === 0
+        );
+      } else {
+        laneFiltered = filteredCheckins.filter(checkin => 
+          checkin.labels && checkin.labels.includes(laneLabel)
+        );
+      }
+      
+      console.log("Lane filtered count:", laneFiltered.length);
+      
+      // Clear and re-render this lane
+      laneCheckins.innerHTML = "";
+      
+      // Sort and render checkins for this lane
+      laneFiltered
+        .sort((a, b) => {
+          const { state: stateA } = computeStatus(a);
+          const { state: stateB } = computeStatus(b);
+          
+          const priority = { red: 0, yellow: 1, ontime: 2 };
+          const priorityA = priority[stateA];
+          const priorityB = priority[stateB];
+          
+          if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+          }
+          
+          return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime();
+        })
+        .forEach((checkin) => {
+          laneCheckins.appendChild(buildCheckinCard(checkin));
+        });
+      
+      if (laneFiltered.length === 0) {
+        const empty = document.createElement("p");
+        empty.textContent = "No check-ins in this lane";
+        empty.classList.add("helper");
+        laneCheckins.appendChild(empty);
+      }
+    }, 0);
+    
+    content.appendChild(laneCheckins);
+    lane.appendChild(header);
+    lane.appendChild(content);
+    swimLanesContainer.appendChild(lane);
+  });
+  
+  checkinsContainer.appendChild(swimLanesContainer);
+  console.log("Swim lanes rendered");
 };
 
 const renderTasks = () => {
   tasksContainer.innerHTML = "";
+  updateLabelFilters();
   
-  const filteredTasks = tasks.filter(task => {
-    if (searchTerm) {
-      return task.title.toLowerCase().includes(searchTerm.toLowerCase());
-    }
-    return true;
-  });
+  const filteredTasks = filterTasks();
   
   if (filteredTasks.length === 0) {
     const empty = document.createElement("p");
     empty.textContent = tasks.length === 0 
       ? "No tasks yet. Add your first task."
-      : "No tasks match the current search.";
+      : "No tasks match the current filters.";
     empty.classList.add("helper");
     tasksContainer.appendChild(empty);
     return;
@@ -461,7 +688,7 @@ const renderTasks = () => {
       return new Date(b.completedDate || 0).getTime() - new Date(a.completedDate || 0).getTime();
     })
     .forEach((task) => {
-      tasksContainer.appendChild(createTaskCard(task));
+      tasksContainer.appendChild(buildTaskCard(task));
     });
 };
 
@@ -481,27 +708,31 @@ const saveAndRender = () => {
 
 // Modal functions
 const openModal = (modal) => {
+  console.log("Opening modal:", modal);
   modal.classList.add("show");
 };
 
 const closeModal = (modal) => {
+  console.log("Closing modal:", modal);
   modal.classList.remove("show");
 };
 
-// View switching
-const switchToView = (view) => {
+// View switcher
+const switchView = (view) => {
   currentView = view;
-  if (view === 'checkins') {
-    checkinsView.style.display = 'block';
-    tasksView.style.display = 'none';
-    checkinsViewBtn.classList.add('active');
-    tasksViewBtn.classList.remove('active');
+  
+  if (view === "checkins") {
+    checkinsViewBtn.classList.add("active");
+    tasksViewBtn.classList.remove("active");
+    checkinsSection.style.display = "block";
+    tasksSection.style.display = "none";
   } else {
-    checkinsView.style.display = 'none';
-    tasksView.style.display = 'block';
-    checkinsViewBtn.classList.remove('active');
-    tasksViewBtn.classList.add('active');
+    tasksViewBtn.classList.add("active");
+    checkinsViewBtn.classList.remove("active");
+    tasksSection.style.display = "block";
+    checkinsSection.style.display = "none";
   }
+  
   render();
 };
 
@@ -524,10 +755,7 @@ const exportData = () => {
   URL.revokeObjectURL(url);
 };
 
-const importData = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  
+const importData = (file) => {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -543,7 +771,6 @@ const importData = (event) => {
         saveTasks(tasks);
       }
       
-      populateLaneSelects();
       render();
       alert("Data imported successfully!");
     } catch (error) {
@@ -551,257 +778,216 @@ const importData = (event) => {
       alert("Failed to import data. Please check the file format.");
     }
   };
-  
   reader.readAsText(file);
-  // Clear the file input
-  event.target.value = '';
 };
 
-// Event listeners
-addCheckinBtn.addEventListener("click", () => openModal(checkinModal));
-addTaskBtn.addEventListener("click", () => openModal(taskModal));
-closeCheckinModal.addEventListener("click", () => closeModal(checkinModal));
-closeTaskModal.addEventListener("click", () => closeModal(taskModal));
-
-checkinsViewBtn.addEventListener("click", () => switchToView("checkins"));
-tasksViewBtn.addEventListener("click", () => switchToView("tasks"));
-
-exportBtn.addEventListener("click", exportData);
-importBtn.addEventListener("click", () => importFile.click());
-importFile.addEventListener("change", importData);
-
-searchInput.addEventListener("input", (event) => {
-  searchTerm = event.target.value.toLowerCase();
-  render();
-});
-
-// Close modal when clicking outside
-window.addEventListener("click", (event) => {
-  if (event.target === checkinModal) {
-    closeModal(checkinModal);
-  }
-  if (event.target === taskModal) {
-    closeModal(taskModal);
-  }
-});
-
-// Form submissions
-checkinForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const formData = new FormData(checkinForm);
-  const title = String(formData.get("title")).trim();
-  const frequencyValue = Number(formData.get("frequency-value"));
-  const frequencyUnit = String(formData.get("frequency-unit"));
-  const firstDueDate = parseDateInput(String(formData.get("first-due-date")));
-  const yellowThresholdDays = Number(formData.get("yellow-threshold"));
-  const redThresholdDays = Number(formData.get("red-threshold"));
-  const labelsInput = String(formData.get("labels") || "").trim();
-
-  if (!title) {
-    return;
-  }
-
-  if (redThresholdDays < yellowThresholdDays) {
-    alert("Red threshold should be greater than or equal to the yellow threshold.");
-    return;
-  }
-
-  // Parse labels
-  const labels = labelsInput ? labelsInput.split(',').map(label => label.trim()).filter(label => label.length > 0) : [];
-
-  const newCheckin = {
-    id: crypto.randomUUID(),
-    title,
-    frequencyValue,
-    frequencyUnit,
-    nextDueDate: firstDueDate.toISOString(),
-    lastCheckInDate: null,
-    yellowThresholdDays,
-    redThresholdDays,
-    labels,
-  };
-
-  checkins.unshift(newCheckin);
-  checkinForm.reset();
-  document.querySelector("#frequency-value").value = 1;
-  document.querySelector("#frequency-unit").value = "months";
-  document.querySelector("#yellow-threshold").value = 14;
-  document.querySelector("#red-threshold").value = 14;
-  document.querySelector("#first-due-date").valueAsDate = new Date();
-  closeModal(checkinModal);
-  saveAndRender();
-});
-
-taskForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const formData = new FormData(taskForm);
-  const title = String(formData.get("title")).trim();
-  const labelsInput = String(formData.get("labels") || "").trim();
-
-  if (!title) {
-    return;
-  }
-
-  // Parse labels
-  const labels = labelsInput ? labelsInput.split(',').map(label => label.trim()).filter(label => label.length > 0) : [];
-
-  const newTask = {
-    id: crypto.randomUUID(),
-    title,
-    labels,
-    createdDate: new Date().toISOString(),
-    completed: false,
-    completedDate: null,
-  };
-
-  tasks.unshift(newTask);
-  taskForm.reset();
-  closeModal(taskModal);
-  saveAndRender();
-});
-
-
-// Swim lane functions
-const getAllLabels = () => {
-  const labels = new Set();
-  checkins.forEach(checkin => {
-    if (checkin.labels) {
-      checkin.labels.forEach(label => labels.add(label));
-    }
-  });
-  tasks.forEach(task => {
-    if (task.labels) {
-      task.labels.forEach(label => labels.add(label));
-    }
-  });
-  return Array.from(labels).sort();
-};
-
-const populateLaneSelects = () => {
-  const labels = getAllLabels();
-  const options = ['<option value="">Select labels...</option>'];
-  labels.forEach(label => {
-    options.push(`<option value="${label}">${label}</option>`);
-  });
+// Initialize everything when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  console.log("DOM loaded, setting up event listeners...");
   
-  lane1Select.innerHTML = options.join('');
-  lane2Select.innerHTML = options.join('');
-};
+  // Event listeners with debugging
+  console.log("addCheckinBtn:", addCheckinBtn);
+  console.log("addTaskBtn:", addTaskBtn);
+  console.log("checkinModal:", checkinModal);
+  console.log("taskModal:", taskModal);
 
-const filterCheckinsForLane = (checkins, selectedLabels) => {
-  if (!selectedLabels || selectedLabels === '') {
-    return [];
-  }
-  
-  const labels = selectedLabels.split(',').map(l => l.trim()).filter(l => l.length > 0);
-  return checkins.filter(checkin => {
-    if (!checkin.labels || checkin.labels.length === 0) {
-      return false;
-    }
-    return labels.some(label => checkin.labels.includes(label));
-  });
-};
-
-const renderSwimLanes = () => {
-  const lane1Labels = lane1Select.value;
-  const lane2Labels = lane2Select.value;
-  
-  let filteredCheckins = checkins;
-  if (searchTerm) {
-    filteredCheckins = filteredCheckins.filter(checkin => 
-      checkin.title.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }
-  
-  const lane1Checkins = filterCheckinsForLane(filteredCheckins, lane1Labels);
-  const lane2Checkins = filterCheckinsForLane(filteredCheckins, lane2Labels);
-  
-  // Sort checkins by priority (red > yellow > ontime) then by due date
-  const sortByPriority = (a, b) => {
-    const statusA = getCheckinStatus(a);
-    const statusB = getCheckinStatus(b);
-    
-    const priorityOrder = { red: 0, yellow: 1, ontime: 2 };
-    const priorityA = priorityOrder[statusA.state];
-    const priorityB = priorityOrder[statusB.state];
-    
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
-    
-    return new Date(a.nextDueDate) - new Date(b.nextDueDate);
-  };
-  
-  lane1Checkins.sort(sortByPriority);
-  lane2Checkins.sort(sortByPriority);
-  
-  // Render lane 1
-  lane1Container.innerHTML = '';
-  if (lane1Checkins.length === 0) {
-    lane1Container.innerHTML = '<p style="color: #6b7280; text-align: center; padding: 2rem;">No check-ins match selected labels</p>';
+  if (addCheckinBtn) {
+    addCheckinBtn.addEventListener("click", () => {
+      console.log("Add checkin button clicked");
+      openModal(checkinModal);
+    });
   } else {
-    lane1Checkins.forEach(checkin => {
-      const card = createCheckinCard(checkin);
-      lane1Container.appendChild(card);
+    console.error("addCheckinBtn not found!");
+  }
+
+  if (addTaskBtn) {
+    addTaskBtn.addEventListener("click", () => {
+      console.log("Add task button clicked");
+      openModal(taskModal);
+    });
+  } else {
+    console.error("addTaskBtn not found!");
+  }
+
+  if (closeCheckinModal) {
+    closeCheckinModal.addEventListener("click", () => closeModal(checkinModal));
+  }
+
+  if (closeTaskModal) {
+    closeTaskModal.addEventListener("click", () => closeModal(taskModal));
+  }
+
+  if (checkinsViewBtn) {
+    checkinsViewBtn.addEventListener("click", () => switchView("checkins"));
+  }
+
+  if (tasksViewBtn) {
+    tasksViewBtn.addEventListener("click", () => switchView("tasks"));
+  }
+
+  // Undo button
+  const undoBtn = document.querySelector("#undo-btn");
+  if (undoBtn) {
+    undoBtn.addEventListener("click", undoLastAction);
+  }
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", exportData);
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener("click", () => importFile.click());
+  }
+
+  if (importFile) {
+    importFile.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        importData(file);
+      }
+      e.target.value = ""; // Reset file input
     });
   }
-  
-  // Render lane 2
-  lane2Container.innerHTML = '';
-  if (lane2Checkins.length === 0) {
-    lane2Container.innerHTML = '<p style="color: #6b7280; text-align: center; padding: 2rem;">No check-ins match selected labels</p>';
-  } else {
-    lane2Checkins.forEach(checkin => {
-      const card = createCheckinCard(checkin);
-      lane2Container.appendChild(card);
+
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      searchTerm = e.target.value;
+      render();
     });
   }
-};
 
-// Event listeners
-addCheckinBtn.addEventListener('click', () => openModal(checkinModal));
-addTaskBtn.addEventListener('click', () => openModal(taskModal));
-closeCheckinModal.addEventListener('click', () => closeModal(checkinModal));
-closeTaskModal.addEventListener('click', () => closeModal(taskModal));
-checkinsViewBtn.addEventListener('click', () => switchToView('checkins'));
-tasksViewBtn.addEventListener('click', () => switchToView('tasks'));
-lane1Select.addEventListener('change', renderSwimLanes);
-lane2Select.addEventListener('change', renderSwimLanes);
+  // Close modal when clicking outside
+  window.addEventListener("click", (e) => {
+    if (e.target === checkinModal) {
+      closeModal(checkinModal);
+    }
+    if (e.target === taskModal) {
+      closeModal(taskModal);
+    }
+  });
 
-// Modal close on outside click
-window.addEventListener('click', (event) => {
-  if (event.target === checkinModal) {
-    closeModal(checkinModal);
+  // Form submissions
+  if (checkinForm) {
+    checkinForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(checkinForm);
+      const title = String(formData.get("title")).trim();
+      const frequencyValue = Number(formData.get("frequency-value"));
+      const frequencyUnit = String(formData.get("frequency-unit"));
+      const firstDueDate = parseDateInput(String(formData.get("first-due-date")));
+      const yellowThresholdDays = Number(formData.get("yellow-threshold"));
+      const redThresholdDays = Number(formData.get("red-threshold"));
+      const labelsInput = String(formData.get("labels") || "").trim();
+
+      if (!title) {
+        return;
+      }
+
+      if (redThresholdDays < yellowThresholdDays) {
+        alert("Red threshold should be greater than or equal to the yellow threshold.");
+        return;
+      }
+
+      // Parse labels
+      const labels = labelsInput ? labelsInput.split(',').map(label => label.trim()).filter(label => label.length > 0) : [];
+
+      const newCheckin = {
+        id: crypto.randomUUID(),
+        title,
+        frequencyValue,
+        frequencyUnit,
+        nextDueDate: firstDueDate.toISOString(),
+        lastCheckInDate: null,
+        yellowThresholdDays,
+        redThresholdDays,
+        labels,
+      };
+
+      checkins.unshift(newCheckin);
+      
+      addAction({
+        type: ACTION_TYPES.ADD_CHECKIN,
+        itemId: newCheckin.id,
+        description: `add check-in "${title}"`
+      });
+      
+      checkinForm.reset();
+      document.querySelector("#frequency-value").value = 1;
+      document.querySelector("#frequency-unit").value = "months";
+      document.querySelector("#yellow-threshold").value = 14;
+      document.querySelector("#red-threshold").value = 14;
+      document.querySelector("#first-due-date").valueAsDate = new Date();
+      closeModal(checkinModal);
+      saveAndRender();
+    });
   }
-  if (event.target === taskModal) {
-    closeModal(taskModal);
+
+  if (taskForm) {
+    taskForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const formData = new FormData(taskForm);
+      const title = String(formData.get("title")).trim();
+      const labelsInput = String(formData.get("labels") || "").trim();
+
+      if (!title) {
+        return;
+      }
+
+      // Parse labels
+      const labels = labelsInput ? labelsInput.split(',').map(label => label.trim()).filter(label => label.length > 0) : [];
+
+      const newTask = {
+        id: crypto.randomUUID(),
+        title,
+        labels,
+        createdDate: new Date().toISOString(),
+        completed: false,
+        completedDate: null,
+      };
+
+      tasks.unshift(newTask);
+      
+      addAction({
+        type: ACTION_TYPES.ADD_TASK,
+        itemId: newTask.id,
+        description: `add task "${title}"`
+      });
+      
+      taskForm.reset();
+      closeModal(taskModal);
+      saveAndRender();
+    });
   }
+
+  // Filter event listeners
+  if (statusFilter) {
+    statusFilter.addEventListener('change', renderCheckins);
+  }
+  if (timeFilter) {
+    timeFilter.addEventListener('change', renderCheckins);
+  }
+  if (taskStatusFilter) {
+    taskStatusFilter.addEventListener('change', renderTasks);
+  }
+  if (taskLabelFilter) {
+    taskLabelFilter.addEventListener('change', renderTasks);
+  }
+
+  // Initialize
+  const setDefaultDate = () => {
+    const today = new Date();
+    const dateInput = document.querySelector("#first-due-date");
+    if (dateInput) {
+      dateInput.valueAsDate = today;
+    }
+  };
+
+  const initialize = () => {
+    checkins = loadCheckins();
+    tasks = loadTasks();
+    setDefaultDate();
+    render();
+  };
+
+  initialize();
 });
-
-// Search functionality
-searchInput.addEventListener('input', (event) => {
-  searchTerm = event.target.value.toLowerCase();
-  render();
-});
-
-// Import/Export event listeners
-importBtn.addEventListener('click', () => importFile.click());
-exportBtn.addEventListener('click', exportData);
-importFile.addEventListener('change', importData);
-
-// Initialize
-const setDefaultDate = () => {
-  const today = new Date();
-  const dateInput = document.querySelector("#first-due-date");
-  dateInput.valueAsDate = today;
-};
-
-const initialize = () => {
-  checkins = loadCheckins();
-  tasks = loadTasks();
-  setDefaultDate();
-  populateLaneSelects();
-  render();
-};
-
-initialize();
