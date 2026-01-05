@@ -38,6 +38,7 @@ let currentView = "checkins";
 let checkins = [];
 let tasks = [];
 let searchTerm = "";
+let swimLaneSelections = []; // Store swim lane selections globally
 
 // Undo system
 let actionHistory = [];
@@ -544,50 +545,59 @@ const renderCheckins = () => {
   const swimLanesContainer = document.createElement("div");
   swimLanesContainer.className = "swim-lanes";
   
-  // Default to showing "All check-ins" and top label, or two top labels
-  const topLabels = getTopLabels(filteredCheckins, 1);
-  const defaultLabels = ["All check-ins"];
+  // Get all unique labels for dropdown options
+  const allLabels = ["All check-ins", ...getUniqueLabels(checkins), "Unlabeled"];
   
-  if (topLabels.length > 0) {
-    defaultLabels.push(topLabels[0]);
+  // Initialize swim lane selections if not set
+  if (swimLaneSelections.length === 0) {
+    const topLabels = getTopLabels(filteredCheckins, 2);
+    console.log("Top labels found:", topLabels);
+    
+    if (topLabels.length >= 2) {
+      // Use the top 2 categories
+      swimLaneSelections = topLabels;
+    } else if (topLabels.length === 1) {
+      // Use the top category and "All check-ins"
+      swimLaneSelections = [topLabels[0], "all"];
+    } else {
+      // No categories, use "All check-ins" and "Unlabeled"
+      swimLaneSelections = ["all", ""];
+    }
   }
   
-  // If we still don't have 2 lanes, add unlabeled
-  if (defaultLabels.length < 2) {
-    defaultLabels.push("Unlabeled");
-  }
+  console.log("Swim lane selections:", swimLaneSelections);
   
-  console.log("Default labels for lanes:", defaultLabels);
-  
-  defaultLabels.forEach((label, index) => {
+  swimLaneSelections.forEach((selection, index) => {
     const lane = document.createElement("div");
     lane.className = "swim-lane";
     
     const header = document.createElement("div");
     header.className = "swim-lane-header";
     
+    // Convert selection value to display label
+    let displayLabel;
+    if (selection === "all") displayLabel = "All check-ins";
+    else if (selection === "") displayLabel = "Unlabeled";
+    else displayLabel = selection;
+    
     const title = document.createElement("h3");
     title.className = "swim-lane-title";
-    title.textContent = label;
+    title.textContent = displayLabel;
     
     const dropdown = document.createElement("select");
     dropdown.className = "swim-lane-dropdown";
     dropdown.dataset.laneIndex = index;
     
-    const allLabels = ["All check-ins", ...getUniqueLabels(checkins), "Unlabeled"];
     console.log("Available labels for dropdown:", allLabels);
     
     allLabels.forEach(l => {
       const option = document.createElement("option");
       option.value = l === "All check-ins" ? "all" : (l === "Unlabeled" ? "" : l);
       option.textContent = l;
-      option.selected = l === label;
+      option.selected = (l === "All check-ins" && selection === "all") || 
+                       (l === "Unlabeled" && selection === "") ||
+                       (l === selection);
       dropdown.appendChild(option);
-    });
-    
-    dropdown.addEventListener("change", (e) => {
-      console.log("Swim lane dropdown changed:", e.target.value, "Lane index:", index);
-      renderCheckins();
     });
     
     header.appendChild(title);
@@ -600,55 +610,50 @@ const renderCheckins = () => {
     laneCheckins.className = "checkins";
     
     // Filter checkins for this lane
-    setTimeout(() => {
-      const laneLabel = dropdown.value;
-      console.log("Lane label:", laneLabel, "for lane:", label);
-      let laneFiltered;
-      
-      if (laneLabel === "all") {
-        laneFiltered = filteredCheckins;
-      } else if (laneLabel === "") {
-        laneFiltered = filteredCheckins.filter(checkin => 
-          !checkin.labels || checkin.labels.length === 0
-        );
-      } else {
-        laneFiltered = filteredCheckins.filter(checkin => 
-          checkin.labels && checkin.labels.includes(laneLabel)
-        );
-      }
-      
-      console.log("Lane filtered count:", laneFiltered.length);
-      
-      // Clear and re-render this lane
-      laneCheckins.innerHTML = "";
-      
-      // Sort and render checkins for this lane
-      laneFiltered
-        .sort((a, b) => {
-          const { state: stateA } = computeStatus(a);
-          const { state: stateB } = computeStatus(b);
-          
-          const priority = { red: 0, yellow: 1, ontime: 2 };
-          const priorityA = priority[stateA];
-          const priorityB = priority[stateB];
-          
-          if (priorityA !== priorityB) {
-            return priorityA - priorityB;
-          }
-          
-          return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime();
-        })
-        .forEach((checkin) => {
-          laneCheckins.appendChild(buildCheckinCard(checkin));
-        });
-      
-      if (laneFiltered.length === 0) {
-        const empty = document.createElement("p");
-        empty.textContent = "No check-ins in this lane";
-        empty.classList.add("helper");
-        laneCheckins.appendChild(empty);
-      }
-    }, 0);
+    const laneLabel = dropdown.value;
+    console.log("Lane label:", laneLabel, "for lane:", displayLabel);
+    let laneFiltered;
+    
+    if (laneLabel === "all") {
+      laneFiltered = filteredCheckins;
+    } else if (laneLabel === "") {
+      laneFiltered = filteredCheckins.filter(checkin => 
+        !checkin.labels || checkin.labels.length === 0
+      );
+    } else {
+      laneFiltered = filteredCheckins.filter(checkin => 
+        checkin.labels && checkin.labels.includes(laneLabel)
+      );
+    }
+    
+    console.log("Lane filtered count:", laneFiltered.length);
+    
+    // Sort and render checkins for this lane
+    laneFiltered
+      .sort((a, b) => {
+        const { state: stateA } = computeStatus(a);
+        const { state: stateB } = computeStatus(b);
+        
+        const priority = { red: 0, yellow: 1, ontime: 2 };
+        const priorityA = priority[stateA];
+        const priorityB = priority[stateB];
+        
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+        
+        return new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime();
+      })
+      .forEach((checkin) => {
+        laneCheckins.appendChild(buildCheckinCard(checkin));
+      });
+    
+    if (laneFiltered.length === 0) {
+      const empty = document.createElement("p");
+      empty.textContent = "No check-ins in this lane";
+      empty.classList.add("helper");
+      laneCheckins.appendChild(empty);
+    }
     
     content.appendChild(laneCheckins);
     lane.appendChild(header);
@@ -658,6 +663,21 @@ const renderCheckins = () => {
   
   checkinsContainer.appendChild(swimLanesContainer);
   console.log("Swim lanes rendered");
+  
+  // Add event delegation for dropdown changes
+  swimLanesContainer.addEventListener("change", (e) => {
+    if (e.target.classList.contains("swim-lane-dropdown")) {
+      const laneIndex = parseInt(e.target.dataset.laneIndex);
+      const newValue = e.target.value;
+      console.log("Swim lane dropdown changed:", newValue, "Lane index:", laneIndex);
+      
+      // Update global state
+      swimLaneSelections[laneIndex] = newValue;
+      console.log("Updated swimLaneSelections:", swimLaneSelections);
+      
+      renderCheckins();
+    }
+  });
 };
 
 const renderTasks = () => {
